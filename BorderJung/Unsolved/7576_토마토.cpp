@@ -1,3 +1,5 @@
+// 재시도 횟수: 1
+
 #include <iostream>
 #include <queue>
 using namespace std;

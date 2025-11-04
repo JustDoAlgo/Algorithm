@@ -1,7 +1,4 @@
-/*
-i-2, i-1, i 중 최솟값을 구하는 것임.
-i < 2 인 경우는 최댓값으로 보고 하면 됨.
-*/
+// 재시도 횟수: 1
 
 #include <iostream>
 #include <deque>

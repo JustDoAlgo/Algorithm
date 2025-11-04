@@ -1,3 +1,5 @@
+// 재시도 횟수: 1
+
 #include <iostream>
 #include <stack>
 #define x first
@@ -27,9 +29,9 @@ int main()
         int cnt = 1;
         while (!people.empty() && people.top().x <= h)
         {
-            result += people.top().y;
+            result += people.top().y; // 전 사람을 볼 수 있는 자들을 결과에 더해
             if (people.top().x == h)
-                cnt += people.top().y;
+                cnt += people.top().y; // 
             people.pop(); 
         }
 
