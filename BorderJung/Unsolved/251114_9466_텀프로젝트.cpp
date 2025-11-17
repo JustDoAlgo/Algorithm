@@ -1,3 +1,7 @@
+/*
+재시도 횟수: 1/3
+*/
+
 #include <iostream>
 #include <stack>
 using namespace std;
