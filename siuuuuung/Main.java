@@ -4,12 +4,11 @@ public class Main {
     public static void main(String[] args) {
         Solution sol = new Solution();
 
-        String[] s1 = {"i", "drink", "water"};
-        String[] s2 = {"want", "to"};
-        String[] goal = {"i", "want", "to", "drink", "water"};
+        int[] arr = {1,2,3,4,8};
+        int target = 6;
 
-        ["i", "drink", "water"], ["want", "to"], ["i", "want", "to", "drink", "water"]
-        System.out.println(sol.solution(s1, s2, goal));
+        
+        System.out.println(sol.solution(arr, target));
     
         
     }

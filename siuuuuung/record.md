@@ -19,7 +19,7 @@ int b = Integer.parseInt(st.nextToken());
 ```java
 HashMap<String, Integer> map = new HashMap<>(); // 참조형!
 
-조회: map.getOrDefault(key, 디폴트값);
+조회: map.getOrDefault(key, 디폴트값); // 있는지 없는지를 분기 처리해야할 때 이거로 한번에 조회랑 동시에 할 수 있음(완주하지 못한 선수)
 
 cnt 증가: map.put(key, map.getOrDefault(key, 0)+1);
 
