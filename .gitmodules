@@ -1,0 +1,3 @@
+[submodule "doorcs"]
+	path = doorcs
+	url = https://github.com/doorcs/problem-solving.git
