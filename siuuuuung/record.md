@@ -11,8 +11,6 @@ StringTokenizer st = new StringTokenizer(br.readLine());
 
 int a = Integer.parseInt(st.nextToken());
 int b = Integer.parseInt(st.nextToken());
-
-        
 ```
 
 # 해쉬(파스타맛집)
