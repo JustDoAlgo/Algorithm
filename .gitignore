@@ -1,5 +1,9 @@
 /.vscode
 
+# AI
+.gemini/
+AGENTS.md
+
 # Java
 *.class
 *.log
@@ -15,3 +19,5 @@
 hs_err_pid*
 replay_pid*
 
+# doorcs
+.gitmodules
