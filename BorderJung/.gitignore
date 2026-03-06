@@ -1,3 +1,8 @@
-*.exe
 .vscode
+
+# files
+*.exe
 main.cpp
+
+# AI
+AGENTS.md
