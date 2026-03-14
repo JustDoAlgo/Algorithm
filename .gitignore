@@ -2,6 +2,7 @@
 
 # AI
 .gemini/
+.claude/
 AGENTS.md
 
 # Java
