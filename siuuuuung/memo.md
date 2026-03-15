@@ -30,3 +30,18 @@ for i in board:
     ans = max(ans, max(i))
 ```
 
+```python
+sx,sy 네이밍, 배열 회전, 루프 범위를 유효범위로 제한, 절대/상대좌표 구분
+```
+
+## 18808 - 스티커 붙이기
+
+- 절대/상대좌표 구분 (notebook[sy+i][sx+j] vs sticker[i][j])
+- 초과 검사 대신 루프 범위 자체를 유효범위로 제한
+- 행렬 90도 회전
+  ```python
+  for i in range(r):
+    for j in range(c):
+      rotated[j][r-1-i] = original[i][j]
+  ```
+
