@@ -1,76 +1,77 @@
-# 1. 스티커를 하나씩 순회
-# 2. 각 스티커마다 행, 열 각각 0~R-r, 0~C-c 범위만큼 순회
-# 2-1. 규격에 벗어나지 않는 경우 기존 스티커와 겹치는지 check() 검사. 
-#      검사 통과시 attach()로 notebook에 스티커 기록하고 검사 중단 후 다음 스티커인 1로 돌아감
-# 3. 현재 방향에 실패하면 현재 스티커를 회전시키고 2로 돌아감
-# 4. notebook에서 1의 개수 출력
-
-# 얻어간것 
+from collections import deque
 
 
-R, C, K = map(int, input().split()) # k = 스티커 개수
+board = [list(input().strip()) for _ in range(12)]
 
-notebook = [[0]*C for _ in range(R)]
-stickers = []
-for _ in range(K): # 스티커 입력받기
-    r,c = map(int, input().split())
-    tmp = [list(map(int,input().split())) for _ in range(r)]
-    stickers.append(tmp)
+dx,dy = [0,1,0,-1],[-1,0,1,0]
 
+def drop_blocks(board):
+    # board의 열을 아래부터 순회하며 
+    for c in range(6):
+    # .이 아닌 블록만 하나씩 따로 큐에 저장하고 .으로 바꿔버리기
+        col = [board[r][c] for r in range(12)]
+        q = deque()
 
-def isOverlapped(sticker, sy, sx):
-    for i in range(len(sticker)):
-        for j in range(len(sticker[0])):
-            if sticker[i][j] == 1 and notebook[sy+i][sx+j] == 1:
-                return True
-    return False
-
-
-def attach(sticker, sy, sx):
-    for i in range(len(sticker)):
-        for j in range(len(sticker[0])):
-            if sticker[i][j]==1:
-                notebook[sy+i][sx+j]=1
-
-
-def rotate(sticker):
-    r = len(sticker)
-    c = len(sticker[0])
-    rotated = [[0]*r for _ in range(c)]
+        for i in range(11, -1,-1):
+            if col[i] != '.':
+                q.append(col[i])
+                board[i][c] = '.'
+        
+        # 그 열을 아래부터 재순회하며 .이면 블록 배치, 큐가 비면 그냥 .
+        for i in range(11, -1, -1):
+            if board[i][c] == '.' and q:
+                board[i][c] = q.popleft()
     
-    for i in range(r):
-        for j in range(c):
-            rotated[j][r-1-i] = sticker[i][j]
-
-    return rotated
-
-for sticker in stickers:
-    attached = False
-
-    for _ in range(4):
-        r = len(sticker)
-        c = len(sticker[0])
-
-        for i in range(R-r+1):
-            if attached:
-                break
-            for j in range(C-c+1):
-                if not isOverlapped(sticker, i, j):
-                    attach(sticker, i, j)
-                    attached = True
-                    break
+    return 
 
 
-        if attached:
-            break
+def bfs(y, x, board):
+    tmp = [(y,x)]
+    q = deque([(y,x)])
+    visited[y][x] = True
 
-        sticker = rotate(sticker) 
+    while q:
+        r,c = q.popleft()
 
+        for d in range(4):
+            nx = c + dx[d]
+            ny = r + dy[d]
 
-ans = 0
-for i in notebook:
-    for j in i:
-        if j==1:
-            ans +=1
+            if 0<=nx<6 and 0<=ny<12:
+                if not visited[ny][nx] and board[ny][nx] == board[y][x]:
+                    tmp.append((ny,nx))
+                    q.append((ny,nx))
+                    visited[ny][nx] = True
+    
+    # 같은 색 칸 bfs 진행이 4이상이면 삭제 목록에 저장
+    if len(tmp) >= 4:
+        removals.extend(tmp)
+    
 
-print(ans)
+    return
+
+boom_cnt = 0
+
+while True:
+    # 방문처리, 제거목록 선언
+    visited, removals = [[False]*6 for _ in range(12)], []
+    
+    # 전체 순회
+    for i in range(12):
+        for j in range(6):
+            # 미방문 색깔칸이면 bfs
+            if board[i][j] !='.' and not visited[i][j]:
+                bfs(i, j, board)
+    
+    # 연쇄가 없으면 종료
+    if not removals:
+        break
+
+    # 연쇄처리 하기
+    for y,x in removals:
+        board[y][x] = '.'
+    boom_cnt += 1
+
+    drop_blocks(board)
+
+print(boom_cnt)
