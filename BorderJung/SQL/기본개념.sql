@@ -6,6 +6,10 @@
    - SELECT ... FROM ... WHERE         기본 조회 + 조건 필터
    - ORDER BY col ASC|DESC             정렬 (기본 ASC)
    - LIMIT N                           출력 개수 제한
+   - SELECT DISTINCT col1, col2...     행 전체 조합 기준 중복 제거
+     → 특정 컬럼 하나가 아닌 SELECT한 컬럼 전체 조합이 같은 행을 제거
+     → JOIN으로 1:N 매칭 후 N쪽 컬럼을 SELECT하지 않을 때 중복 발생 → DISTINCT 필요
+     → 집계 함수 안에서도 사용 가능: COUNT(DISTINCT col), SUM(DISTINCT col)
 
    [집계 함수]
    - COUNT(*), COUNT(DISTINCT col)     개수 (중복 제거 가능)
@@ -22,6 +26,8 @@
    - HAVING 조건                       그룹에 대한 필터 (WHERE는 행 필터)
    - 집계 함수는 압축 전 원본 행들을 보고 계산 → 결과는 그룹당 1행
      → SUM(A*B): 그룹 내 각 행의 A*B를 모두 더함 (매출액 등)
+     → PRICE * SUM(AMOUNT): GROUP BY 키에 종속된 상수는 SUM 바깥으로 뺄 수 있음
+       → SUM(PRICE*AMOUNT)과 결과 동일 (PRICE가 그룹 내 동일값일 때)
      → 다중 테이블 JOIN 후 GROUP BY 시 SUM/COUNT 등으로 감싸야 정확
    - 집계 함수 안에 CASE WHEN을 넣어 값을 변환한 뒤 집계 가능
      → AVG(CASE WHEN 조건 THEN 대체값 ELSE 원래값 END)
@@ -30,8 +36,9 @@
    [조건 / NULL 처리]
    - BETWEEN a AND b                   범위 조건
    - LIKE '패턴%'                      문자열 패턴 매칭
+     → LIKE는 패턴 하나만 비교 가능 — LIKE ('%A%', '%B%') ❌ 문법 오류!
+     → 여러 패턴 비교: LIKE '%A%' OR col LIKE '%B%' (OR로 각각 써야 함)
      → 컬럼 값이 쉼표 구분 문자열일 때 특정 값 포함 여부: LIKE '%값%'
-     → 여러 값 중 하나라도 포함: LIKE '%A%' OR LIKE '%B%' OR ...
      → IN은 목록 비교용이지 문자열 내부 검색이 아님!
    - IN (값1, 값2, ...)                목록 포함 여부
    - NOT IN (값1, 값2, ...)            목록에 포함되지 않는 행 필터
@@ -46,6 +53,10 @@
    [JOIN]
    - JOIN ... ON 조건                  양쪽 다 매칭되는 행만
    - LEFT JOIN ... ON 조건             왼쪽 테이블 전체 유지, 매칭 안 되면 NULL
+   - LEFT JOIN + CASE ON: 구간/등급별 동적 매칭
+     → ON 절에 CASE를 넣어 계산값에 따라 매칭할 행을 결정
+     → 매칭 실패(구간 밖) → NULL → IFNULL로 기본값 처리
+     → 예: 대여일수별 할인율 구간 매칭 (7일/30일/90일 이상)
 
    [서브쿼리]
    - WHERE col = (SELECT ...)          스칼라 서브쿼리
@@ -67,6 +78,13 @@
    - 함수() OVER (PARTITION BY col)    그룹별 집계값을 새 컬럼으로 추가
      → GROUP BY와 달리 행이 사라지지 않음
    - PERCENT_RANK() OVER (ORDER BY col) 순위 백분율 (0~1)
+   - RANK() OVER (ORDER BY col DESC)   동점 허용 순위 (1,1,3,...)
+     → LIMIT 1은 동점자 누락 → RANK()=1로 동점 전부 추출
+     → GROUP BY + COUNT 결과에 RANK() 붙여 "가장 많은/적은" 패턴
+     → 서브쿼리 필수: SELECT에서 만든 RNK를 WHERE에서 못 씀 → 인라인 뷰로 감싸기
+   - ROW_NUMBER() OVER (ORDER BY col)   동점이어도 고유 순번 (1,2,3,...)
+     → "정확히 N건"이 필요하면 ROW_NUMBER, "동점 전부"면 RANK
+     → RANK vs ROW_NUMBER 선택 기준: 문제가 "N마리/N개" → ROW_NUMBER, "가장 ~한" → RANK
 
    [재귀 CTE]
    - WITH RECURSIVE 이름 AS (          계층/트리 구조 순회
@@ -92,6 +110,10 @@
    - WHERE에서 SELECT 별칭을 쓸 수 없을 때 활용 (실행 순서 때문)
    - FROM절 인라인 뷰 → 바깥 SELECT/WHERE/ORDER BY 어디서든 별칭.컬럼 참조 가능
    - WHERE/HAVING절 서브쿼리 → 값만 반환, 바깥에서 별칭 참조 불가
+   - CASE+GROUP BY에서 인라인 뷰 활용:
+     → 방법1: 인라인 뷰에서 CASE로 변환 후 바깥에서 GROUP BY (CASE 1번만 작성)
+     → 방법2: SELECT와 GROUP BY에 동일 CASE를 직접 반복 (서브쿼리 없이)
+     → 복잡한 CASE일수록 인라인 뷰가 깔끔 (반복 제거)
    - 인라인 뷰 안에서 SUM 등 집계 결과를 AS로 별칭 붙여야 바깥에서 참조 가능
    - LIMIT 1은 동점자 누락 → WHERE col=(SELECT MAX(col) FROM ...) 패턴이 안전
 
@@ -114,8 +136,26 @@
 
    [문자열 / 날짜]
    - CONCAT(값1, 값2, ...)             문자열 이어붙이기
+   - LEFT(str, N) / RIGHT(str, N)     왼쪽/오른쪽에서 N자 추출
+   - SUBSTR(str, pos, len)            pos부터 len자 추출 (pos는 1부터)
+     → ⚠️ SQL 인덱스는 1-based! (C++/Python의 0-based와 다름)
+     → SUBSTR('ABCDE', 1, 2) = 'AB' / SUBSTR('ABCDE', 3, 2) = 'CD'
+   - LENGTH(str)                      문자열 길이
+   - UPPER(str) / LOWER(str)          대소문자 변환
+   - REPLACE(str, from, to)           문자열 치환
+   - LEFT/SUBSTR은 GROUP BY에도 사용 가능 → 코드 앞자리별 그룹화 등
+   - CONCAT + LEFT/SUBSTR/RIGHT 조합으로 전화번호 등 포맷팅
+     → CONCAT(LEFT(tel,3), '-', SUBSTR(tel,4,4), '-', RIGHT(tel,4))
    - DATE_FORMAT(날짜, '%Y-%m-%d')     날짜 포맷 변환
    - YEAR(날짜), MONTH(날짜)           연도/월 추출
+   - DATEDIFF(끝날짜, 시작날짜)        두 날짜 사이 일수 (끝-시작)
+     → ⚠️ 양 끝 포함 대여일수 = DATEDIFF + 1
+     → "30일 이상" 대여 = DATEDIFF >= 29 (9/1~9/30 = 29이지만 실제 30일)
+   - DATE(datetime컬럼)               DATETIME에서 날짜만 추출
+     → ⚠️ DATETIME 컬럼을 날짜 문자열과 비교할 때 반드시 사용!
+     → DATE 타입: col = '2022-04-13' ✅ (시간 없으니 바로 비교 가능)
+     → DATETIME 타입: col = '2022-04-13' ❌ (시간 때문에 불일치)
+       → DATE(col) = '2022-04-13' ✅
 
    [SQL 실행 순서 + WHERE vs HAVING]
    - 실행 순서: FROM → JOIN → WHERE → GROUP BY → HAVING → SELECT → ORDER BY
@@ -131,6 +171,11 @@
    - MAX(CASE WHEN 조건 THEN 1 ELSE 0 END)  그룹 내 조건 만족 행 존재 여부 판별
      → "하나라도 만족하면 1" 패턴
    - 날짜 범위 포함 체크: START_DATE <= 날짜 AND END_DATE >= 날짜
+   - 기간 겹침(overlap) 판별: START_DATE <= 기간끝 AND END_DATE >= 기간시작
+     → 단일 날짜 포함(점): S <= D AND E >= D  /  기간 겹침(구간): S <= E2 AND E >= S2
+     → NOT IN 서브쿼리와 결합 → "해당 기간에 예약 없는 항목" 추출
+     → 계산식(FLOOR 등)을 SELECT와 WHERE에 모두 써야 할 때: 별칭은 WHERE에서 못 씀(실행 순서)
+       → 같은 식을 반복하거나, 인라인 뷰로 감싸서 바깥에서 별칭 필터
 
    ============================================================ */
 
@@ -784,3 +829,283 @@ ORDER BY I.ITEM_ID DESC;
 -- ★ 연습: EMPLOYEE 테이블에서 누구의 매니저도 아닌 사원(MANAGER_ID로 참조되지 않는)의
 --   ID, NAME을 출력하라. ID 오름차순.
 -- 풀이 포인트: WHERE ID NOT IN (SELECT MANAGER_ID FROM EMPLOYEE WHERE MANAGER_ID IS NOT NULL)
+
+
+-- [JOIN + NOT IN 서브쿼리 + 계산식 WHERE: 다중 조건 필터링]
+-- 할인 플랜 JOIN + 기간 겹침으로 대여 불가 차량 제외 + 계산 금액 범위 필터
+-- 핵심: 기간 겹침 판별 — START_DATE <= 기간끝 AND END_DATE >= 기간시작
+-- 주의: SELECT 별칭(FEE)은 WHERE에서 못 씀 → 계산식을 WHERE에 직접 반복
+-- 문제: 프로그래머스 Lv.4 '자동차 대여 기록에서 조건에 맞는 자동차 리스트 구하기'
+SELECT C.CAR_ID, C.CAR_TYPE,
+    FLOOR(30 * C.DAILY_FEE * (100 - P.DISCOUNT_RATE) / 100) AS FEE
+FROM CAR_RENTAL_COMPANY_CAR C
+JOIN CAR_RENTAL_COMPANY_DISCOUNT_PLAN P ON C.CAR_TYPE = P.CAR_TYPE
+WHERE C.CAR_TYPE IN ('세단', 'SUV')
+    AND C.CAR_ID NOT IN (
+        SELECT CAR_ID FROM CAR_RENTAL_COMPANY_RENTAL_HISTORY
+        WHERE START_DATE <= '2022-11-30' AND END_DATE >= '2022-11-01'
+    )
+    AND P.DURATION_TYPE = '30일 이상'
+    AND FLOOR(30 * C.DAILY_FEE * (100 - P.DISCOUNT_RATE) / 100) >= 500000
+    AND FLOOR(30 * C.DAILY_FEE * (100 - P.DISCOUNT_RATE) / 100) < 2000000
+ORDER BY FEE DESC, C.CAR_TYPE, C.CAR_ID DESC;
+
+-- ★ 연습: HOTEL_ROOM 테이블과 HOTEL_RESERVATION 테이블에서
+--   ROOM_TYPE이 '디럭스' 또는 '스위트'이고, 2023년 7월 중 예약이 없으며,
+--   7일간 숙박 금액(DAILY_PRICE * 7)이 100만원 이상인 객실의
+--   ROOM_ID, ROOM_TYPE, 숙박금액(TOTAL_FEE)을 출력하라. TOTAL_FEE 내림차순.
+-- 풀이 포인트: NOT IN + 기간 겹침(CHECK_IN <= '2023-07-31' AND CHECK_OUT >= '2023-07-01')
+--   + 계산식을 WHERE에 직접 반복 (별칭 사용 불가)
+
+
+-- [JOIN + GROUP BY + 상수*SUM: 총매출 계산]
+-- GROUP BY 키(PRODUCT_ID)에 종속된 PRICE는 그룹 내 동일값 → SUM 바깥에 곱해도 OK
+-- YEAR()/MONTH()로 날짜 필터링
+-- 문제: 프로그래머스 Lv.4 '5월 식품들의 총매출 조회하기'
+SELECT P.PRODUCT_ID, P.PRODUCT_NAME,
+    P.PRICE * SUM(O.AMOUNT) AS TOTAL_SALES
+FROM FOOD_PRODUCT P
+JOIN FOOD_ORDER O ON P.PRODUCT_ID = O.PRODUCT_ID
+WHERE YEAR(O.PRODUCE_DATE) = 2022 AND MONTH(O.PRODUCE_DATE) = 5
+GROUP BY P.PRODUCT_ID, P.PRODUCT_NAME
+ORDER BY TOTAL_SALES DESC, P.PRODUCT_ID;
+
+-- ★ 연습: BOOK 테이블과 BOOK_SALES 테이블에서 2023년 상반기(1~6월)
+--   도서별 총매출(PRICE * 판매수량 합)을 구하고, BOOK_ID, TITLE, TOTAL_SALES를 출력하라.
+--   TOTAL_SALES 내림차순, 같으면 BOOK_ID 오름차순.
+-- 풀이 포인트: PRICE * SUM(QUANTITY) + WHERE YEAR()=2023 AND MONTH() BETWEEN 1 AND 6
+
+
+-- [RANK() 윈도우 함수 + 인라인 뷰: LIMIT 1 동점 누락 해결]
+-- LIMIT 1은 최다 리뷰 작성자가 여러 명일 때 1명만 반환 → RANK()로 동점 전부 추출
+-- GROUP BY+COUNT 결과에 RANK() 붙이고, 인라인 뷰로 감싸서 RNK=1 필터
+-- 문제: 프로그래머스 Lv.4 '그룹별 조건에 맞는 식당 목록 출력하기'
+
+-- ▼ 개선 전 (LIMIT 1 — 동점자 누락 위험)
+-- SELECT M.MEMBER_NAME, R.REVIEW_TEXT,
+--     DATE_FORMAT(R.REVIEW_DATE, '%Y-%m-%d') AS REVIEW_DATE
+-- FROM MEMBER_PROFILE M
+-- JOIN REST_REVIEW R ON M.MEMBER_ID = R.MEMBER_ID
+-- WHERE M.MEMBER_ID = (
+--     SELECT MEMBER_ID FROM REST_REVIEW
+--     GROUP BY MEMBER_ID ORDER BY COUNT(*) DESC LIMIT 1
+-- )
+-- ORDER BY R.REVIEW_DATE, R.REVIEW_TEXT;
+
+-- ▼ 개선 후 (RANK — 동점 안전)
+SELECT M.MEMBER_NAME, R.REVIEW_TEXT,
+    DATE_FORMAT(R.REVIEW_DATE, '%Y-%m-%d') AS REVIEW_DATE
+FROM MEMBER_PROFILE M
+JOIN REST_REVIEW R ON M.MEMBER_ID = R.MEMBER_ID
+WHERE M.MEMBER_ID IN (
+    SELECT MEMBER_ID FROM (
+        SELECT MEMBER_ID,
+            RANK() OVER (ORDER BY COUNT(*) DESC) AS RNK
+        FROM REST_REVIEW
+        GROUP BY MEMBER_ID
+    ) T
+    WHERE RNK = 1
+)
+ORDER BY R.REVIEW_DATE, R.REVIEW_TEXT;
+
+-- ★ 연습: ORDER_DETAIL 테이블과 CUSTOMER 테이블에서 주문 건수가 가장 많은
+--   고객(동점 포함)의 CUSTOMER_ID, NAME, 전체 주문 목록(ORDER_ID, ORDER_DATE)을
+--   출력하라. ORDER_DATE 오름차순.
+-- 풀이 포인트: RANK() OVER (ORDER BY COUNT(*) DESC) + 인라인 뷰 WHERE RNK=1
+
+
+-- [비트 연산 JOIN + DISTINCT: 1:N JOIN 중복 제거]
+-- 비트 AND로 스킬 매칭 시, 한 개발자가 여러 Front End 스킬 보유 → JOIN 결과 중복
+-- SELECT에 스킬 컬럼이 없으므로 동일 행 발생 → DISTINCT로 제거
+-- 문제: 프로그래머스 Lv.2 '프론트엔드 개발자 찾기'
+SELECT DISTINCT D.ID, D.EMAIL, D.FIRST_NAME, D.LAST_NAME
+FROM DEVELOPERS D
+JOIN SKILLCODES S ON D.SKILL_CODE & S.CODE > 0
+WHERE S.CATEGORY = 'Front End'
+ORDER BY D.ID;
+
+-- ★ 연습: STUDENT 테이블과 COURSE_ENROLLMENT 테이블에서
+--   '수학' 카테고리 과목을 하나라도 수강 중인 학생의 ID, NAME을 출력하라. ID 오름차순.
+--   (한 학생이 수학 과목 여러 개 수강 가능 → 중복 주의)
+-- 풀이 포인트: JOIN 후 SELECT DISTINCT — 또는 WHERE ID IN (서브쿼리)로 우회 가능
+
+
+-- [DISTINCT + JOIN: 조건 매칭 후 ID만 추출]
+-- 한 차량이 10월에 여러 번 대여 → JOIN 결과 중복 → DISTINCT
+-- 문제: 프로그래머스 Lv.1 '자동차 대여 기록에서 대여중 / 대여 가능 여부 구분하기' 계열
+SELECT DISTINCT C.CAR_ID
+FROM CAR_RENTAL_COMPANY_CAR C
+JOIN CAR_RENTAL_COMPANY_RENTAL_HISTORY H ON C.CAR_ID = H.CAR_ID
+WHERE C.CAR_TYPE = '세단' AND MONTH(H.START_DATE) = 10
+ORDER BY C.CAR_ID DESC;
+
+-- ★ 연습: 위 쿼리를 JOIN 없이 서브쿼리(IN)로 다시 작성해보라.
+-- 풀이 포인트: WHERE CAR_TYPE='세단' AND CAR_ID IN (SELECT CAR_ID FROM ...HISTORY WHERE MONTH(...)=10)
+
+
+-- [CASE WHEN + LIKE: 문자열 패턴으로 분류]
+-- LIKE는 패턴 하나만 비교 가능 → 여러 패턴은 OR로 각각
+-- ❌ LIKE ('%Neutered%', '%Spayed%')  ← IN 처럼 묶을 수 없음
+-- ✅ LIKE '%Neutered%' OR col LIKE '%Spayed%'
+-- 문제: 프로그래머스 Lv.2 '중성화 여부 파악하기'
+SELECT ANIMAL_ID, NAME,
+    CASE
+        WHEN SEX_UPON_INTAKE LIKE '%Neutered%'
+          OR SEX_UPON_INTAKE LIKE '%Spayed%' THEN 'O'
+        ELSE 'X'
+    END AS 중성화
+FROM ANIMAL_INS
+ORDER BY ANIMAL_ID;
+
+-- ★ 연습: PRODUCT 테이블에서 NAME에 '프리미엄' 또는 '리미티드'가 포함되면 '한정판',
+--   아니면 '일반'으로 분류하여 PRODUCT_ID, NAME, TYPE을 출력하라. ID 오름차순.
+-- 풀이 포인트: CASE WHEN NAME LIKE '%프리미엄%' OR NAME LIKE '%리미티드%' THEN ...
+
+
+-- [RANK vs ROW_NUMBER + 인라인 뷰: 상위 N건 추출]
+-- RANK(): 동점이면 같은 순위 → RNK<=2가 3건 이상 반환 가능
+-- ROW_NUMBER(): 동점이어도 순번 1,2,3... → 정확히 N건 보장
+-- "두 마리"처럼 정확한 건수가 필요하면 ROW_NUMBER가 안전
+-- 날짜 차이: O.DATETIME - I.DATETIME → 보호 기간 계산 (큰 값 = 오래 보호)
+-- 문제: 프로그래머스 Lv.3 '오랜 기간 보호한 동물(2)'
+SELECT ANIMAL_ID, NAME FROM (
+    SELECT I.ANIMAL_ID, I.NAME,
+        RANK() OVER (ORDER BY O.DATETIME - I.DATETIME DESC) AS RNK
+    FROM ANIMAL_INS I
+    JOIN ANIMAL_OUTS O ON I.ANIMAL_ID = O.ANIMAL_ID
+) T
+WHERE RNK <= 2;
+
+-- ★ 연습: 위 쿼리에서 RANK()를 ROW_NUMBER()로 바꿔보라.
+--   동점 동물이 있을 때 결과가 어떻게 달라지는지 생각해보라.
+-- 풀이 포인트: RANK — 동점 전부(2건 이상 가능) / ROW_NUMBER — 정확히 N건
+
+
+-- [LEFT + GROUP BY: 코드 앞자리별 그룹화]
+-- LEFT(str, N)으로 문자열 앞부분 추출 → GROUP BY에 바로 사용 가능
+-- 문제: 프로그래머스 Lv.2 '카테고리 별 상품 개수 구하기'
+SELECT LEFT(PRODUCT_CODE, 2) AS CATEGORY, COUNT(PRODUCT_ID) AS PRODUCTS
+FROM PRODUCT
+GROUP BY LEFT(PRODUCT_CODE, 2)
+ORDER BY CATEGORY;
+
+-- ★ 연습: LOG 테이블에서 ERROR_CODE(예: 'ERR-404-001')의 앞 7자리(예: 'ERR-404')별
+--   발생 건수를 구하고, CODE_GROUP, CNT를 출력하라. CNT 내림차순.
+-- 풀이 포인트: LEFT(ERROR_CODE, 7) 또는 SUBSTR(ERROR_CODE, 1, 7) + GROUP BY
+
+
+-- [CONCAT + SUBSTR 조합: 문자열 포맷팅 + HAVING 건수 필터]
+-- LEFT/SUBSTR/RIGHT로 전화번호를 xxx-xxxx-xxxx 형태로 변환
+-- CONCAT으로 주소 컬럼 여러 개를 공백과 합쳐 전체주소 생성
+-- GROUP BY + HAVING COUNT(*) >= N 으로 게시물 N건 이상 사용자 필터
+-- 문제: 프로그래머스 Lv.3 '조건에 맞는 사용자 정보 조회하기'
+SELECT U.USER_ID, U.NICKNAME,
+    CONCAT(U.CITY, ' ', U.STREET_ADDRESS1, ' ', U.STREET_ADDRESS2) AS 전체주소,
+    CONCAT(LEFT(U.TLNO, 3), '-', SUBSTR(TLNO, 4, 4), '-', RIGHT(TLNO, 4)) AS 전화번호
+FROM USED_GOODS_BOARD B
+JOIN USED_GOODS_USER U ON B.WRITER_ID = U.USER_ID
+GROUP BY U.USER_ID, U.NICKNAME
+HAVING COUNT(*) >= 3
+ORDER BY U.USER_ID DESC;
+
+-- ★ 연습: MEMBER 테이블에서 주민번호(JUMIN, 13자리 숫자)를
+--   'XXXXXX-XXXXXXX' 형태로 포맷팅하여 NAME, JUMIN_FMT를 출력하라.
+-- 풀이 포인트: CONCAT(LEFT(JUMIN, 6), '-', SUBSTR(JUMIN, 7, 7))
+--   (SUBSTR의 pos는 1부터 시작!)
+
+
+-- [DATEDIFF + CASE WHEN: 날짜 차이로 분류]
+-- DATEDIFF(END, START) = 끝-시작 → 양 끝 포함 일수는 +1
+-- "30일 이상" → DATEDIFF >= 29 (경계값 주의!)
+-- 문제: 프로그래머스 Lv.1 '자동차 대여 기록에서 장기/단기 대여 구분하기'
+SELECT HISTORY_ID, CAR_ID,
+    DATE_FORMAT(START_DATE, '%Y-%m-%d') AS START_DATE,
+    DATE_FORMAT(END_DATE, '%Y-%m-%d') AS END_DATE,
+    CASE
+        WHEN DATEDIFF(END_DATE, START_DATE) >= 29 THEN '장기 대여'
+        ELSE '단기 대여'
+    END AS RENT_TYPE
+FROM CAR_RENTAL_COMPANY_RENTAL_HISTORY
+WHERE YEAR(START_DATE) = 2022 AND MONTH(START_DATE) = 9
+ORDER BY HISTORY_ID DESC;
+
+-- ★ 연습: SUBSCRIPTION 테이블에서 가입일(JOIN_DATE)과 해지일(CANCEL_DATE) 차이가
+--   365일 이상이면 '장기회원', 아니면 '단기회원'으로 분류하여
+--   USER_ID, MEMBER_TYPE을 출력하라. (양 끝 포함 기준)
+-- 풀이 포인트: DATEDIFF(CANCEL_DATE, JOIN_DATE) >= 364
+
+
+-- [LEFT JOIN + CASE ON + IFNULL: 구간별 동적 할인율 매칭]
+-- 핵심: ON 절에 CASE를 넣어 대여일수에 따라 할인 구간을 동적으로 매칭
+-- LEFT JOIN인 이유: 7일 미만은 할인 없음 → CASE가 NULL 반환 → 매칭 실패 → NULL
+-- IFNULL(DISCOUNT_RATE, 0): 매칭 실패(할인 없음)일 때 0%로 처리
+-- DATEDIFF+1: 양 끝 포함 대여일수 (이전 문제에서 학습)
+-- 문제: 프로그래머스 Lv.4 '자동차 대여 기록 별 대여 금액 구하기'
+SELECT H.HISTORY_ID,
+    FLOOR((DATEDIFF(H.END_DATE, H.START_DATE) + 1) * C.DAILY_FEE
+        * (100 - IFNULL(P.DISCOUNT_RATE, 0)) / 100) AS FEE
+FROM CAR_RENTAL_COMPANY_CAR C
+JOIN CAR_RENTAL_COMPANY_RENTAL_HISTORY H ON C.CAR_ID = H.CAR_ID
+LEFT JOIN CAR_RENTAL_COMPANY_DISCOUNT_PLAN P ON C.CAR_TYPE = P.CAR_TYPE
+    AND P.DURATION_TYPE = CASE
+        WHEN DATEDIFF(H.END_DATE, H.START_DATE) + 1 >= 90 THEN '90일 이상'
+        WHEN DATEDIFF(H.END_DATE, H.START_DATE) + 1 >= 30 THEN '30일 이상'
+        WHEN DATEDIFF(H.END_DATE, H.START_DATE) + 1 >= 7  THEN '7일 이상'
+    END
+WHERE C.CAR_TYPE = '트럭'
+ORDER BY FEE DESC, HISTORY_ID DESC;
+
+-- ★ 연습: PRODUCT 테이블과 DISCOUNT_POLICY 테이블에서 상품 가격에 따라
+--   할인율을 동적 매칭하라 (10만 이상 → 'A등급', 5만 이상 → 'B등급', 그 외 할인 없음).
+--   PRODUCT_ID, FLOOR(PRICE * (100-할인율)/100) AS FINAL_PRICE 출력. FINAL_PRICE DESC.
+-- 풀이 포인트: LEFT JOIN + ON CASE WHEN PRICE>=100000 THEN 'A등급' ... END
+--   + IFNULL(DISCOUNT_RATE, 0)
+
+
+-- [다중 JOIN + DATE(): DATETIME 컬럼 날짜 비교]
+-- DATETIME 컬럼('2022-04-13 09:30:00')을 날짜만으로 비교 → DATE() 필수
+-- 3개 테이블 JOIN: APPOINTMENT ↔ PATIENT(환자명), APPOINTMENT ↔ DOCTOR(의사명)
+-- 문제: 프로그래머스 Lv.1 '진료과별 예약 내역 조회하기' 계열
+SELECT A.APNT_NO, P.PT_NAME, P.PT_NO, D.MCDP_CD, D.DR_NAME, A.APNT_YMD
+FROM APPOINTMENT A
+JOIN PATIENT P ON A.PT_NO = P.PT_NO
+JOIN DOCTOR D ON A.MDDR_ID = D.DR_ID
+WHERE A.MCDP_CD = 'CS'
+    AND A.APNT_CNCL_YN = 'N'
+    AND DATE(A.APNT_YMD) = '2022-04-13'
+ORDER BY A.APNT_YMD;
+
+-- ★ 연습: EVENT 테이블에서 EVENT_DATETIME(DATETIME 타입)이 2023년 12월 25일인
+--   행의 EVENT_ID, EVENT_NAME을 출력하라. EVENT_DATETIME 오름차순.
+-- 풀이 포인트: WHERE DATE(EVENT_DATETIME) = '2023-12-25'
+--   (DATE() 없이 비교하면 시간 부분 때문에 매칭 실패!)
+
+
+-- [인라인 뷰 + CASE + GROUP BY: 구간 분류 후 집계]
+-- 인라인 뷰에서 CASE로 분기 변환 → 바깥에서 GROUP BY (CASE를 1번만 작성)
+-- 서브쿼리 없이도 가능하지만, CASE가 복잡할수록 인라인 뷰가 깔끔
+-- 문제: 프로그래머스 Lv.2 '분기별 분화된 대장균의 개체 수 구하기'
+
+-- ▼ 인라인 뷰 방식 (CASE 1번만 작성 — 깔끔)
+SELECT QUARTER, COUNT(*) AS ECOLI_COUNT FROM (
+    SELECT CASE
+        WHEN MONTH(DIFFERENTIATION_DATE) <= 3 THEN '1Q'
+        WHEN MONTH(DIFFERENTIATION_DATE) <= 6 THEN '2Q'
+        WHEN MONTH(DIFFERENTIATION_DATE) <= 9 THEN '3Q'
+        ELSE '4Q'
+    END AS QUARTER
+    FROM ECOLI_DATA
+) T
+GROUP BY QUARTER
+ORDER BY QUARTER;
+
+-- ▼ 서브쿼리 없는 방식 (CASE를 SELECT + GROUP BY에 반복)
+-- SELECT CASE WHEN MONTH(...) <= 3 THEN '1Q' ... END AS QUARTER, COUNT(*)
+-- FROM ECOLI_DATA
+-- GROUP BY CASE WHEN MONTH(...) <= 3 THEN '1Q' ... END
+-- ORDER BY QUARTER;
+
+-- ★ 연습: SALES 테이블에서 AMOUNT 기준으로
+--   1만 미만 → '소액', 1만~10만 → '중액', 10만 이상 → '고액' 분류 후
+--   각 구간별 건수(CNT)를 출력하라. 두 가지 방식(인라인 뷰 / 직접 반복)으로 풀어보라.
+-- 풀이 포인트: 인라인 뷰 → CASE 1번 / 직접 → SELECT와 GROUP BY에 동일 CASE 반복
