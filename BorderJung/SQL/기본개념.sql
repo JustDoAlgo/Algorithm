@@ -57,6 +57,8 @@
      → ON 절에 CASE를 넣어 계산값에 따라 매칭할 행을 결정
      → 매칭 실패(구간 밖) → NULL → IFNULL로 기본값 처리
      → 예: 대여일수별 할인율 구간 매칭 (7일/30일/90일 이상)
+   - LEFT JOIN + WHERE IS NULL         Anti-Join: 다른 테이블에 없는 행만 조회
+   - JOIN + WHERE A.col 비교 B.col     두 테이블 간 컬럼 대소 비교
 
    [서브쿼리]
    - WHERE col = (SELECT ...)          스칼라 서브쿼리
@@ -364,6 +366,93 @@ ORDER BY P.ID ASC;
 --   각 선생님이 담당하는 수업 수를 구하라. 수업이 없는 선생님도 0으로 표시.
 --   TEACHER_ID 오름차순.
 -- 풀이 포인트: LEFT JOIN + COUNT(C.컬럼) (NULL은 카운트 안 됨)
+
+
+-- [LEFT JOIN + WHERE IS NULL: Anti-Join — 다른 테이블에 없는 행 찾기]
+-- LEFT JOIN 후 매칭 안 된 행(NULL)만 필터 → 한쪽에만 존재하는 데이터 조회
+-- NOT IN과 같은 역할이지만 NULL 함정 없이 안전
+-- 문제: 프로그래머스 Lv.3 '없어진 기록 찾기'
+SELECT O.ANIMAL_ID, O.NAME FROM ANIMAL_OUTS O
+LEFT JOIN ANIMAL_INS I ON O.ANIMAL_ID=I.ANIMAL_ID
+WHERE I.ANIMAL_ID IS NULL
+ORDER BY O.ANIMAL_ID;
+
+
+-- [LEFT JOIN + WHERE IS NULL + LIMIT: 매칭 안 되는 행 중 상위 N개]
+-- Anti-Join 패턴에 ORDER BY + LIMIT을 결합하여 "없는 쪽에서 상위 N개" 조회
+-- 문제: 프로그래머스 Lv.3 '오랜 기간 보호한 동물(1)'
+SELECT I.NAME, I.DATETIME FROM ANIMAL_INS I
+LEFT JOIN ANIMAL_OUTS O ON I.ANIMAL_ID=O.ANIMAL_ID
+WHERE O.ANIMAL_ID IS NULL
+ORDER BY I.DATETIME
+LIMIT 3;
+
+
+-- [JOIN + 날짜 비교: 두 테이블 간 컬럼 대소 비교]
+-- JOIN 후 WHERE에서 두 테이블의 컬럼을 직접 비교하여 이상 데이터 탐지
+-- 문제: 프로그래머스 Lv.3 '있었는데요 없었습니다'
+SELECT I.ANIMAL_ID, I.NAME FROM ANIMAL_INS I
+LEFT JOIN ANIMAL_OUTS O ON I.ANIMAL_ID=O.ANIMAL_ID
+WHERE O.DATETIME < I.DATETIME
+ORDER BY I.DATETIME;
+
+
+-- [JOIN + LIKE 다중 조건: 두 테이블 간 상태 변화 비교]
+-- 들어올 때(INS)와 나갈 때(OUTS) 상태를 각각 LIKE로 비교하여 변화 감지
+-- 핵심: 한쪽은 LIKE '%Intact%', 다른 쪽은 LIKE '%Spayed%' OR LIKE '%Neutered%'
+-- 문제: 프로그래머스 Lv.4 '보호소에서 중성화한 동물'
+SELECT I.ANIMAL_ID, I.ANIMAL_TYPE, I.NAME FROM ANIMAL_INS I
+JOIN ANIMAL_OUTS O ON I.ANIMAL_ID=O.ANIMAL_ID
+WHERE I.SEX_UPON_INTAKE LIKE '%Intact%'
+  AND (O.SEX_UPON_OUTCOME LIKE '%Spayed%' OR O.SEX_UPON_OUTCOME LIKE '%Neutered%')
+ORDER BY I.ANIMAL_ID;
+
+
+-- [JOIN + GROUP BY + SUM: 상품코드별 매출액 집계]
+-- PRICE는 GROUP BY 키(PRODUCT_CODE)에 종속 → 집계 없이 사용 가능
+-- SUM은 GROUP BY 후 그룹 내 행들을 합산
+-- 문제: 프로그래머스 Lv.2 '상품 별 오프라인 매출 구하기'
+SELECT P.PRODUCT_CODE, P.PRICE * SUM(S.SALES_AMOUNT) AS SALES FROM PRODUCT P
+JOIN OFFLINE_SALE S ON P.PRODUCT_ID=S.PRODUCT_ID
+GROUP BY P.PRODUCT_CODE
+ORDER BY SALES DESC, P.PRODUCT_CODE;
+
+
+-- [JOIN + COUNT(DISTINCT) + 스칼라 서브쿼리: 비율 계산]
+-- 분자: COUNT(DISTINCT USER_ID) — 월별 구매 고유 회원수
+-- 분모: (SELECT COUNT(*) FROM ...) — 전체 기준 회원수 (스칼라 서브쿼리로 고정값)
+-- 핵심: 비율 = 분자/분모, ROUND로 소수점 처리
+-- 문제: 프로그래머스 Lv.4 '년, 월, 성별 별 상품 구매 회원 수 구하기' 변형
+SELECT
+    YEAR(S.SALES_DATE) AS YEAR, MONTH(S.SALES_DATE) AS MONTH,
+    COUNT(DISTINCT U.USER_ID) AS PURCHASED_USERS,
+    ROUND(COUNT(DISTINCT U.USER_ID) / (SELECT COUNT(*) FROM USER_INFO WHERE YEAR(JOINED)=2021), 1) AS PURCHASED_RATIO
+FROM ONLINE_SALE S
+JOIN USER_INFO U ON S.USER_ID=U.USER_ID
+WHERE YEAR(U.JOINED)=2021
+GROUP BY YEAR(S.SALES_DATE), MONTH(S.SALES_DATE)
+ORDER BY YEAR, MONTH;
+
+
+-- [JOIN + NOT IN 서브쿼리 + 계산식 필터: 복합 조건 대여 가능 차량 조회]
+-- 1) JOIN으로 차량-할인 연결, WHERE IN으로 차종 필터
+-- 2) NOT IN 서브쿼리로 해당 기간 대여중인 차량 제외 (날짜 겹침: START<=종료 AND END>=시작)
+-- 3) 계산식(30*일일요금*(1-할인율))을 WHERE에서 직접 범위 필터
+-- 핵심: SELECT 별칭(FEE)은 WHERE에서 못 씀 → 계산식 반복 or 인라인 뷰 사용
+-- 문제: 프로그래머스 Lv.4 '자동차 대여 기록에서 대여중/대여 가능 여부 구분하기' 변형
+SELECT C.CAR_ID, C.CAR_TYPE, FLOOR(30*C.DAILY_FEE*((100-P.DISCOUNT_RATE)/100)) AS FEE
+FROM CAR_RENTAL_COMPANY_CAR C
+JOIN CAR_RENTAL_COMPANY_DISCOUNT_PLAN P ON C.CAR_TYPE=P.CAR_TYPE
+WHERE C.CAR_TYPE IN ('세단','SUV')
+    AND P.DURATION_TYPE='30일 이상'
+    AND C.CAR_ID NOT IN (
+        SELECT CAR_ID FROM CAR_RENTAL_COMPANY_RENTAL_HISTORY
+        WHERE START_DATE <= '2022-11-30' AND END_DATE >= '2022-11-01'
+    )
+    AND FLOOR(30*C.DAILY_FEE*((100-P.DISCOUNT_RATE)/100)) >= 500000
+    AND FLOOR(30*C.DAILY_FEE*((100-P.DISCOUNT_RATE)/100)) < 2000000
+GROUP BY CAR_ID, CAR_TYPE
+ORDER BY FEE DESC, C.CAR_TYPE, C.CAR_ID DESC;
 
 
 -- [CASE WHEN: 조건 분기]
