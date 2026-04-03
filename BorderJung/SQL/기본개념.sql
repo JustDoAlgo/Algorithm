@@ -98,6 +98,12 @@
      → 데이터에 빠진 값(빈 시간대 등)을 채울 때 사용
    - 재귀 CTE + LEFT JOIN 패턴: 빈 구간도 0으로 출력해야 할 때
      → CTE를 기준(왼쪽)으로 LEFT JOIN → COUNT(실제테이블.컬럼)으로 NULL은 0처리
+   - 재귀 CTE로 계층(세대) 번호 부여:
+     → 앵커: PARENT_ID IS NULL → 1세대
+     → 재귀: 이전 세대 JOIN → GENERATION+1
+     → 재귀 쿼리는 직전 회차에서 추가된 행만 보고 확장, 새 행 0개면 종료
+   - PERCENT_RANK + CASE WHEN: 백분율 구간별 분류
+     → 인라인 뷰에서 PERCENT_RANK() 계산 → 바깥 CASE로 구간 라벨 부여
 
    [비트 연산]
    - SKILL_CODE & CODE > 0            특정 스킬 보유 여부 확인
@@ -1198,3 +1204,50 @@ ORDER BY QUARTER;
 --   1만 미만 → '소액', 1만~10만 → '중액', 10만 이상 → '고액' 분류 후
 --   각 구간별 건수(CNT)를 출력하라. 두 가지 방식(인라인 뷰 / 직접 반복)으로 풀어보라.
 -- 풀이 포인트: 인라인 뷰 → CASE 1번 / 직접 → SELECT와 GROUP BY에 동일 CASE 반복
+
+
+-- [재귀 CTE + LEFT JOIN: 세대별 리프 노드 개수]
+-- 재귀 CTE로 각 개체의 세대(GENERATION) 계산 → LEFT JOIN으로 자식 없는 개체(리프) 필터
+-- 앵커: PARENT_ID IS NULL → 1세대 / 재귀: 이전 세대 자식 → GENERATION+1
+-- 종료 조건: 더 이상 자식이 없으면 자동 종료
+-- 문제: 프로그래머스 Lv.3 '대장균들의 자식의 수 구하기' 계열
+WITH RECURSIVE GEN AS (
+    SELECT ID, 1 AS GENERATION FROM ECOLI_DATA
+    WHERE PARENT_ID IS NULL
+    UNION ALL
+    SELECT C.ID, G.GENERATION + 1 FROM ECOLI_DATA C
+    JOIN GEN G ON C.PARENT_ID = G.ID
+)
+SELECT COUNT(*) AS COUNT, G.GENERATION
+FROM GEN G
+LEFT JOIN ECOLI_DATA C ON C.PARENT_ID = G.ID
+WHERE C.ID IS NULL
+GROUP BY G.GENERATION
+ORDER BY G.GENERATION;
+
+-- ★ 연습: EMPLOYEE 테이블에서 MANAGER_ID로 계층 구조를 만들고,
+--   각 레벨별 관리자가 아닌 사원(리프) 수를 구하라.
+-- 풀이 포인트: 재귀 CTE (MANAGER_ID IS NULL → LEVEL 1) + LEFT JOIN + WHERE C.ID IS NULL
+
+
+-- [PERCENT_RANK + CASE WHEN: 백분율 구간 분류]
+-- PERCENT_RANK()는 0~1 범위의 순위 백분율 반환
+-- 인라인 뷰에서 PERCENT_RANK 계산 → 바깥 CASE로 구간 라벨 부여
+-- 문제: 프로그래머스 Lv.2 '대장균의 크기에 따라 분류하기 2'
+SELECT ID,
+    CASE
+        WHEN PR <= 0.25 THEN 'CRITICAL'
+        WHEN PR <= 0.5  THEN 'HIGH'
+        WHEN PR <= 0.75 THEN 'MEDIUM'
+        ELSE 'LOW'
+    END AS COLONY_NAME
+FROM (
+    SELECT ID, SIZE_OF_COLONY,
+        PERCENT_RANK() OVER (ORDER BY SIZE_OF_COLONY DESC) AS PR
+    FROM ECOLI_DATA
+) T
+ORDER BY ID ASC;
+
+-- ★ 연습: STUDENT 테이블에서 SCORE 기준 PERCENT_RANK를 구하고,
+--   상위 10% → 'A', 상위 30% → 'B', 상위 60% → 'C', 나머지 → 'D'로 분류하라.
+-- 풀이 포인트: PERCENT_RANK() OVER (ORDER BY SCORE DESC) + CASE WHEN 구간
